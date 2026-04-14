@@ -18,43 +18,36 @@ MAX_ACTIONS_PER_DAY = 3
 
 def get_gem_style(level: int, progress: int):
     """
-    Базовый, мягкий вариант:
-    - оттенок камня слегка меняется по уровням,
-    - свечение плавно усиливается по мере роста прогресса.
+    Камень: мягкий, но изменения оттенка по уровням усилены примерно в 2 раза.
+    Ореол: как в яркой версии — от тусклого к заметно светлому, но без выжигания глаз.
     """
     t = max(0.0, min(1.0, progress / 100.0))
 
+    # Градиенты камня — чуть контрастнее, чем в самом первом варианте
     if level == 1:
-        gradient = "linear-gradient(135deg, #2c8c67, #24654a, #6bc79a)"
-        glow_color = "rgba(107,199,154,{alpha})"
+        gradient = "linear-gradient(135deg, #245f46, #184232, #53b383)"
     elif level == 2:
-        gradient = "linear-gradient(135deg, #31a875, #24895c, #86e0b2)"
-        glow_color = "rgba(134,224,178,{alpha})"
+        gradient = "linear-gradient(135deg, #2c8b63, #1f6245, #7bd3a4)"
     elif level == 3:
-        gradient = "linear-gradient(135deg, #3bbf79, #2e9961, #bde98a)"
-        glow_color = "rgba(189,233,138,{alpha})"
+        gradient = "linear-gradient(135deg, #35a86f, #24754c, #a6e79b)"
     elif level == 4:
-        gradient = "linear-gradient(135deg, #47d187, #35a66a, #d6f19c)"
-        glow_color = "rgba(214,241,156,{alpha})"
+        gradient = "linear-gradient(135deg, #40c67b, #298b53, #cff4a5)"
     else:
-        gradient = "linear-gradient(135deg, #55e494, #3bb774, #f0ffb8)"
-        glow_color = "rgba(240,255,184,{alpha})"
+        gradient = "linear-gradient(135deg, #4be987, #2fa35e, #f2ffbc)"
 
-    # базовая мягкая яркость + немного от прогресса
-    base_brightness = 0.7
-    progress_factor = 0.3 * t
-    glow_strength = min(1.0, base_brightness + progress_factor)
-
-    outer_glow_alpha = 0.5 * glow_strength
-    far_glow_alpha = 0.2 * glow_strength
-    halo_alpha = 0.2 * glow_strength
+    # Ореол — версия из «яркого» варианта, но слегка смягчённая
+    outer_glow_alpha = 0.30 + 0.45 * t      # 0.30–0.75
+    far_glow_alpha = 0.10 + 0.35 * t        # 0.10–0.45
+    halo_alpha = 0.16 + 0.26 * t            # 0.16–0.42
+    halo_inner = 40 + int(30 * t)           # 40–70%
 
     box_shadow = (
-        f"0 0 20px rgba(76, 237, 165, {outer_glow_alpha}), "
-        f"0 0 60px rgba(76, 237, 165, {far_glow_alpha})"
+        f"0 0 34px rgba(76, 237, 165, {outer_glow_alpha}), "
+        f"0 0 95px rgba(76, 237, 165, {far_glow_alpha})"
     )
+
     halo_background = (
-        f"radial-gradient(circle, {glow_color.format(alpha=halo_alpha)}, transparent 60%)"
+        f"radial-gradient(circle, rgba(159,230,184,{halo_alpha}) {halo_inner}%, transparent 82%)"
     )
 
     return gradient, box_shadow, halo_background
@@ -88,47 +81,66 @@ def index():
                     height: 100vh;
                     margin: 0;
                     text-align: center;
+                    position: relative;
+                    overflow: hidden;
                 }}
                 .gem-wrapper {{
                     position: relative;
-                    width: 140px;
-                    height: 140px;
+                    width: 150px;
+                    height: 150px;
                     margin-bottom: 12px;
+                    z-index: 2;
                 }}
                 .gem-glow {{
                     position: absolute;
-                    inset: -15px;
-                    border-radius: 40%;
+                    inset: -28px;
+                    border-radius: 50%;
                     background: {halo_bg};
-                    filter: blur(4px);
+                    filter: blur(10px);
                     pointer-events: none;
-                    transition: background 0.4s ease-out;
+                    transition: background 0.4s ease-out, filter 0.4s ease-out;
+                    z-index: 0;
                 }}
                 .gem-shape {{
+                    position: relative;
                     width: 100%;
                     height: 100%;
                     background: {gradient};
                     clip-path: polygon(50% 0%, 95% 35%, 80% 100%, 20% 100%, 5% 35%);
                     box-shadow: {box_shadow};
                     transition: background 0.4s ease-out, box-shadow 0.4s ease-out;
+                    z-index: 1;
+                }}
+                .name,
+                .level,
+                .subtitle,
+                .bar-wrapper,
+                .bar-label,
+                .btn,
+                .hint {{
+                    position: relative;
+                    z-index: 5;
                 }}
                 .name {{
                     font-size: 20px;
                     margin-bottom: 4px;
-                    color: #9fe6b8;
+                    color: #c5ffda;
                     letter-spacing: 0.04em;
                     text-transform: uppercase;
+                    text-shadow: 0 0 6px rgba(0,0,0,0.85);
                 }}
                 .level {{
                     font-size: 13px;
-                    opacity: 0.85;
+                    opacity: 0.9;
                     margin-bottom: 8px;
+                    text-shadow: 0 0 4px rgba(0,0,0,0.85);
                 }}
                 .subtitle {{
                     font-size: 14px;
                     max-width: 280px;
-                    opacity: 0.85;
+                    opacity: 0.9;
                     margin-bottom: 18px;
+                    text-shadow: 0 0 4px rgba(0,0,0,0.9);
                 }}
                 .bar-wrapper {{
                     width: 240px;
@@ -137,6 +149,7 @@ def index():
                     background: rgba(255,255,255,0.08);
                     overflow: hidden;
                     margin-bottom: 6px;
+                    box-shadow: 0 0 8px rgba(0,0,0,0.7);
                 }}
                 .bar-fill {{
                     width: {progress}%;
@@ -147,8 +160,9 @@ def index():
                 }}
                 .bar-label {{
                     font-size: 12px;
-                    opacity: 0.8;
+                    opacity: 0.85;
                     margin-bottom: 14px;
+                    text-shadow: 0 0 3px rgba(0,0,0,0.8);
                 }}
                 .btn {{
                     border: none;
@@ -159,11 +173,11 @@ def index():
                     color: #050811;
                     font-size: 14px;
                     cursor: pointer;
-                    box-shadow: 0 0 12px rgba(76, 237, 165, 0.6);
+                    box-shadow: 0 0 12px rgba(76, 237, 165, 0.8);
                 }}
                 .btn:active {{
                     transform: scale(0.97);
-                    box-shadow: 0 0 6px rgba(76, 237, 165, 0.6);
+                    box-shadow: 0 0 6px rgba(76, 237, 165, 0.8);
                 }}
                 .btn:disabled {{
                     opacity: 0.5;
@@ -173,7 +187,8 @@ def index():
                 .hint {{
                     margin-top: 8px;
                     font-size: 11px;
-                    opacity: 0.6;
+                    opacity: 0.7;
+                    text-shadow: 0 0 3px rgba(0,0,0,0.8);
                 }}
                 .dev-btn {{
                     position: fixed;
@@ -184,7 +199,8 @@ def index():
                     border-radius: 999px;
                     border: none;
                     cursor: pointer;
-                    transition: opacity 0.2s ease, box-shadow 0.2s ease;
+                    transition: opacity 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+                    z-index: 6;
                 }}
                 .dev-off {{
                     background: rgba(255,255,255,0.08);
@@ -192,16 +208,20 @@ def index():
                     opacity: 0.4;
                 }}
                 .dev-on {{
-                    background: rgba(76,237,165,0.85);
+                    background: rgba(76,237,165,0.9);
                     color: #050811;
-                    opacity: 0.95;
-                    box-shadow: 0 0 10px rgba(76,237,165,0.8);
+                    opacity: 1;
+                    box-shadow: 0 0 12px rgba(76,237,165,1);
                 }}
 
                 @media (max-width: 480px) {{
                     .gem-wrapper {{
-                        width: 120px;
-                        height: 120px;
+                        width: 130px;
+                        height: 130px;
+                    }}
+                    .gem-glow {{
+                        inset: -24px;
+                        filter: blur(9px);
                     }}
                     .bar-wrapper {{
                         width: 90vw;
