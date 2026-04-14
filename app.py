@@ -1,14 +1,57 @@
+from datetime import date
 from flask import Flask, jsonify
 
 app = Flask(__name__)
 
 state = {
     "level": 1,
-    "xp": 30
+    "xp": 30,
+    "last_action_date": None,
+    "actions_today": 0,
+    "dev_mode": False
 }
 
 XP_PER_CARD = 10
 MAX_LEVEL = 5
+MAX_ACTIONS_PER_DAY = 3
+
+
+def get_gem_style(level: int, progress: int):
+    """
+    Яркий камень + аура, которая заметно усиливается по мере роста прогресса и уровня.
+    """
+    t = max(0.0, min(1.0, progress / 100.0))
+
+    # уровневые градиенты: к верхним уровням камень светлее и более «неоновый»
+    if level == 1:
+        gradient = "linear-gradient(135deg, #1f6b4b, #17503a, #44b37a)"
+    elif level == 2:
+        gradient = "linear-gradient(135deg, #278f5c, #1d6a43, #63d491)"
+    elif level == 3:
+        gradient = "linear-gradient(135deg, #2fbf70, #218750, #8bfaa8)"
+    elif level == 4:
+        gradient = "linear-gradient(135deg, #3ae982, #26a85c, #c7ffb5)"
+    else:
+        gradient = "linear-gradient(135deg, #4dff8f, #28c567, #f6ffbf)"
+
+    # усиливаем именно свечение (alpha и радиус)
+    outer_glow_alpha = 0.35 + 0.55 * t      # 0.35–0.90
+    far_glow_alpha = 0.12 + 0.48 * t        # 0.12–0.60
+    halo_alpha = 0.18 + 0.32 * t            # 0.18–0.50
+
+    # аура раздвигается дальше от камня
+    halo_inner = 40 + int(35 * t)           # 40–75%
+
+    box_shadow = (
+        f"0 0 40px rgba(76, 237, 165, {outer_glow_alpha}), "
+        f"0 0 110px rgba(76, 237, 165, {far_glow_alpha})"
+    )
+
+    halo_background = (
+        f"radial-gradient(circle, rgba(159,230,184,{halo_alpha}) {halo_inner}%, transparent 85%)"
+    )
+
+    return gradient, box_shadow, halo_background
 
 
 @app.route("/")
@@ -16,6 +59,10 @@ def index():
     level = state["level"]
     xp = state["xp"]
     progress = max(0, min(100, xp))
+    dev_mode = state["dev_mode"]
+
+    gradient, box_shadow, halo_bg = get_gem_style(level, progress)
+    dev_label = "DEV ON" if dev_mode else "DEV OFF"
 
     html = f"""
     <html>
@@ -34,47 +81,66 @@ def index():
                     height: 100vh;
                     margin: 0;
                     text-align: center;
+                    position: relative;
+                    overflow: hidden;
                 }}
                 .gem-wrapper {{
                     position: relative;
-                    width: 140px;
-                    height: 140px;
+                    width: 170px;
+                    height: 170px;
                     margin-bottom: 12px;
-                }}
-                .gem-shape {{
-                    width: 100%;
-                    height: 100%;
-                    background: linear-gradient(135deg, #3ceaaa, #2b9f73, #9fe6b8);
-                    clip-path: polygon(50% 0%, 95% 35%, 80% 100%, 20% 100%, 5% 35%);
-                    box-shadow:
-                        0 0 20px rgba(76, 237, 165, 0.7),
-                        0 0 60px rgba(76, 237, 165, 0.3);
+                    z-index: 2;
                 }}
                 .gem-glow {{
                     position: absolute;
-                    inset: -15px;
-                    border-radius: 40%;
-                    background: radial-gradient(circle, rgba(159,230,184,0.15), transparent 60%);
-                    filter: blur(4px);
+                    inset: -35px;
+                    border-radius: 50%;
+                    background: {halo_bg};
+                    filter: blur(12px);
                     pointer-events: none;
+                    transition: background 0.4s ease-out, filter 0.4s ease-out;
+                    z-index: 0;
+                }}
+                .gem-shape {{
+                    position: relative;
+                    width: 100%;
+                    height: 100%;
+                    background: {gradient};
+                    clip-path: polygon(50% 0%, 95% 35%, 80% 100%, 20% 100%, 5% 35%);
+                    box-shadow: {box_shadow};
+                    transition: background 0.4s ease-out, box-shadow 0.4s ease-out;
+                    z-index: 1;
+                }}
+                .name,
+                .level,
+                .subtitle,
+                .bar-wrapper,
+                .bar-label,
+                .btn,
+                .hint {{
+                    position: relative;
+                    z-index: 5;
                 }}
                 .name {{
                     font-size: 20px;
                     margin-bottom: 4px;
-                    color: #9fe6b8;
+                    color: #c5ffda;
                     letter-spacing: 0.04em;
                     text-transform: uppercase;
+                    text-shadow: 0 0 7px rgba(0,0,0,0.9);
                 }}
                 .level {{
                     font-size: 13px;
-                    opacity: 0.85;
+                    opacity: 0.95;
                     margin-bottom: 8px;
+                    text-shadow: 0 0 5px rgba(0,0,0,0.9);
                 }}
                 .subtitle {{
                     font-size: 14px;
                     max-width: 280px;
-                    opacity: 0.85;
+                    opacity: 0.9;
                     margin-bottom: 18px;
+                    text-shadow: 0 0 4px rgba(0,0,0,0.9);
                 }}
                 .bar-wrapper {{
                     width: 240px;
@@ -83,18 +149,20 @@ def index():
                     background: rgba(255,255,255,0.08);
                     overflow: hidden;
                     margin-bottom: 6px;
+                    box-shadow: 0 0 10px rgba(0,0,0,0.8);
                 }}
                 .bar-fill {{
                     width: {progress}%;
                     height: 100%;
                     background: linear-gradient(90deg, #3ceaaa, #9fe6b8);
-                    box-shadow: 0 0 10px rgba(76, 237, 165, 0.8);
+                    box-shadow: 0 0 12px rgba(76, 237, 165, 0.9);
                     transition: width 0.3s ease-out;
                 }}
                 .bar-label {{
                     font-size: 12px;
-                    opacity: 0.8;
+                    opacity: 0.9;
                     margin-bottom: 14px;
+                    text-shadow: 0 0 4px rgba(0,0,0,0.9);
                 }}
                 .btn {{
                     border: none;
@@ -105,20 +173,51 @@ def index():
                     color: #050811;
                     font-size: 14px;
                     cursor: pointer;
-                    box-shadow: 0 0 12px rgba(76, 237, 165, 0.6);
+                    box-shadow: 0 0 14px rgba(76, 237, 165, 0.9);
                 }}
                 .btn:active {{
                     transform: scale(0.97);
-                    box-shadow: 0 0 6px rgba(76, 237, 165, 0.6);
+                    box-shadow: 0 0 8px rgba(76, 237, 165, 0.9);
+                }}
+                .btn:disabled {{
+                    opacity: 0.5;
+                    cursor: default;
+                    box-shadow: none;
                 }}
                 .hint {{
                     margin-top: 8px;
                     font-size: 11px;
-                    opacity: 0.6;
+                    opacity: 0.75;
+                    text-shadow: 0 0 3px rgba(0,0,0,0.9);
+                }}
+                .dev-btn {{
+                    position: fixed;
+                    top: 8px;
+                    right: 8px;
+                    font-size: 10px;
+                    padding: 4px 8px;
+                    border-radius: 999px;
+                    border: none;
+                    cursor: pointer;
+                    transition: opacity 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+                    z-index: 6;
+                }}
+                .dev-off {{
+                    background: rgba(255,255,255,0.08);
+                    color: #9fe6b8;
+                    opacity: 0.4;
+                }}
+                .dev-on {{
+                    background: rgba(76,237,165,0.9);
+                    color: #050811;
+                    opacity: 1;
+                    box-shadow: 0 0 12px rgba(76,237,165,1);
                 }}
             </style>
         </head>
         <body>
+            <button class="dev-btn {'dev-on' if dev_mode else 'dev-off'}" id="dev-btn">{dev_label}</button>
+
             <div class="gem-wrapper">
                 <div class="gem-glow"></div>
                 <div class="gem-shape"></div>
@@ -134,13 +233,20 @@ def index():
             </div>
             <div class="bar-label" id="label">Заряд камня: {progress}% (уровень {level})</div>
 
-            <button class="btn" id="card-btn">Отправить открытку</button>
-            <div class="hint">В тестовом режиме каждая открытка даёт +{XP_PER_CARD}% заряда.</div>
+            <button class="btn" id="card-btn">Отправить знак внимания</button>
+            <div class="hint">Не более {MAX_ACTIONS_PER_DAY} знаков внимания в день. Каждый даёт +{XP_PER_CARD}% заряда.</div>
 
             <script>
                 const btn = document.getElementById("card-btn");
                 const bar = document.getElementById("bar");
                 const label = document.getElementById("label");
+                const devBtn = document.getElementById("dev-btn");
+
+                function applyCommon(data) {{
+                    const p = Math.max(0, Math.min(100, data.progress));
+                    bar.style.width = p + "%";
+                    label.textContent = "Заряд камня: " + p + "% (уровень " + data.level + ")";
+                }}
 
                 btn.addEventListener("click", async () => {{
                     try {{
@@ -152,9 +258,49 @@ def index():
                             body: JSON.stringify({{}})
                         }});
                         const data = await response.json();
-                        const p = Math.max(0, Math.min(100, data.progress));
-                        bar.style.width = p + "%";
-                        label.textContent = "Заряд камня: " + p + "% (уровень " + data.level + ")";
+                        applyCommon(data);
+
+                        if (!data.dev_mode && data.limit_reached) {{
+                            btn.disabled = true;
+                            btn.textContent = "Лимит на сегодня исчерпан";
+                        }} else {{
+                            btn.disabled = false;
+                            btn.textContent = "Отправить знак внимания";
+                        }}
+
+                        if (data.dev_mode) {{
+                            devBtn.classList.remove("dev-off");
+                            devBtn.classList.add("dev-on");
+                            devBtn.textContent = "DEV ON";
+                        }} else {{
+                            devBtn.classList.remove("dev-on");
+                            devBtn.classList.add("dev-off");
+                            devBtn.textContent = "DEV OFF";
+                        }}
+                    }} catch (e) {{
+                        console.error(e);
+                    }}
+                }});
+
+                devBtn.addEventListener("click", async () => {{
+                    try {{
+                        const response = await fetch("/dev_toggle", {{
+                            method: "POST"
+                        }});
+                        const data = await response.json();
+                        applyCommon(data);
+
+                        if (data.dev_mode) {{
+                            devBtn.classList.remove("dev-off");
+                            devBtn.classList.add("dev-on");
+                            devBtn.textContent = "DEV ON";
+                            btn.disabled = false;
+                            btn.textContent = "Отправить знак внимания";
+                        }} else {{
+                            devBtn.classList.remove("dev-on");
+                            devBtn.classList.add("dev-off");
+                            devBtn.textContent = "DEV OFF";
+                        }}
                     }} catch (e) {{
                         console.error(e);
                     }}
@@ -168,6 +314,26 @@ def index():
 
 @app.route("/send_card", methods=["POST"])
 def send_card():
+    today = date.today().isoformat()
+
+    if state["last_action_date"] != today:
+        state["last_action_date"] = today
+        state["actions_today"] = 0
+
+    if not state["dev_mode"] and state["actions_today"] >= MAX_ACTIONS_PER_DAY:
+        progress = max(0, min(100, state["xp"]))
+        return jsonify({
+            "level": state["level"],
+            "progress": progress,
+            "limit_reached": True,
+            "actions_today": state["actions_today"],
+            "max_actions": MAX_ACTIONS_PER_DAY,
+            "dev_mode": state["dev_mode"]
+        })
+
+    if not state["dev_mode"]:
+        state["actions_today"] += 1
+
     state["xp"] += XP_PER_CARD
 
     while state["xp"] >= 100 and state["level"] < MAX_LEVEL:
@@ -181,7 +347,31 @@ def send_card():
 
     return jsonify({
         "level": state["level"],
-        "progress": progress
+        "progress": progress,
+        "limit_reached": False,
+        "actions_today": state["actions_today"],
+        "max_actions": MAX_ACTIONS_PER_DAY,
+        "dev_mode": state["dev_mode"]
+    })
+
+
+@app.route("/dev_toggle", methods=["POST"])
+def dev_toggle():
+    state["dev_mode"] = not state["dev_mode"]
+
+    if state["dev_mode"]:
+        today = date.today().isoformat()
+        state["last_action_date"] = today
+        state["actions_today"] = 0
+
+    progress = max(0, min(100, state["xp"]))
+
+    return jsonify({
+        "level": state["level"],
+        "progress": progress,
+        "dev_mode": state["dev_mode"],
+        "actions_today": state["actions_today"],
+        "max_actions": MAX_ACTIONS_PER_DAY
     })
 
 
