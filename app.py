@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
+print("APP BOT_TOKEN prefix:", BOT_TOKEN[:10])
 
 app = Flask(__name__)
 app.secret_key = "CHANGE_ME_TO_RANDOM_SECRET"
