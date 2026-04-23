@@ -14,68 +14,32 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 print("APP BOT_TOKEN prefix:", BOT_TOKEN[:10])
 
 app = Flask(__name__)
-app.secret_key = "CHANGE_ME_TO_RANDOM_SECRET"
+app.secret_key = "SOME_SECRET_FOR_SESSION"  # замени на случайную длинную строку
 
 DATA_FILE = "data.json"
 
-# users = { user_id: { "name": ..., "people": {person_id: {...}, ...} } }
+# users = { user_id: { "name": ..., "people": {person_id: {...}, ...}, "tg_user_id": ... } }
 users = {}
+
 
 def _get_tg_secret_key(bot_token: str) -> bytes:
     return hashlib.sha256(bot_token.encode()).digest()
 
 
+# ВРЕМЕННО: без проверки подписи initData, только парсинг
 def validate_init_data(init_data: str, bot_token: str) -> dict:
-    from urllib.parse import parse_qsl
-    import json as _json
-
-    # Просто распарсим строку initData в dict без проверки подписи
     data = dict(parse_qsl(init_data, keep_blank_values=True))
 
-    # user в initData приходит как JSON-строка, декодируем её в объект
     user_raw = data.get("user")
     if isinstance(user_raw, str):
         try:
-            data["user"] = _json.loads(user_raw)
+            data["user"] = json.loads(user_raw)
         except Exception:
             pass
 
     print("AUTH_TG: WARNING: hash validation DISABLED")
     return data
 
-from flask import request, jsonify
-
-@app.route("/auth_telegram", methods=["POST"])
-def auth_telegram():
-    print("AUTH_TG: вызывается")
-
-    try:
-        data = request.get_json(silent=True) or {}
-        raw_init_data = data.get("initData", "") or ""
-
-        print(f"AUTH_TG: длина init_data {len(raw_init_data)}")
-
-        user_data = validate_init_data(raw_init_data, BOT_TOKEN)
-
-        # user_data — это dict из initData (auth_date, user, query_id и т.д.)
-        # достаём user.id:
-        user_json = user_data.get("user")
-        if isinstance(user_json, str):
-            import json as _json
-            user_obj = _json.loads(user_json)
-        else:
-            user_obj = user_json or {}
-
-        tg_user_id = str(user_obj.get("id"))
-        print("AUTH_TG: success for", tg_user_id)
-
-        return jsonify({"ok": True, "user_id": tg_user_id})
-    except ValueError as e:
-        print("AUTH_TG: ошибка проверки:", e)
-        return jsonify({"ok": False, "error": str(e)}), 400
-    except Exception as e:
-        print("AUTH_TG: неожиданная ошибка:", e)
-        return jsonify({"ok": False, "error": "Internal server error"}), 500
 
 def load_data():
     global users
@@ -146,9 +110,73 @@ def get_current_user():
         return None, None
     return user_id, users[user_id]
 
+
 def today_str():
     return date.today().isoformat()
 
+
+# ========= НОВОЕ: связка Telegram -> users =========
+
+def get_or_create_user_for_tg(tg_user_id: str, tg_first_name: str | None = None) -> str:
+    """
+    Находим или создаём пользователя в нашей локальной БД для данного Telegram user id.
+    """
+    # 1) попытаться найти существующего по tg_user_id
+    for uid, udata in users.items():
+        if udata.get("tg_user_id") == tg_user_id:
+            return uid
+
+    # 2) если не нашли — создать нового
+    name = tg_first_name or f"Пользователь {tg_user_id}"
+    new_user_id = generate_id()
+    users[new_user_id] = {
+        "name": name,
+        "tg_user_id": tg_user_id,
+        "people": {}
+    }
+    save_data()
+    return new_user_id
+
+
+@app.route("/auth_telegram", methods=["POST"])
+def auth_telegram():
+    print("AUTH_TG: вызывается")
+
+    try:
+        data = request.get_json(silent=True) or {}
+        raw_init_data = data.get("initData", "") or ""
+
+        print(f"AUTH_TG: длина init_data {len(raw_init_data)}")
+
+        user_data = validate_init_data(raw_init_data, BOT_TOKEN)
+
+        user_json = user_data.get("user")
+        if isinstance(user_json, str):
+            user_obj = json.loads(user_json)
+        else:
+            user_obj = user_json or {}
+
+        tg_user_id = str(user_obj.get("id"))
+        tg_first_name = user_obj.get("first_name") or user_obj.get("username") or None
+        print("AUTH_TG: success for", tg_user_id)
+
+        # Привязываем к локальному пользователю
+        local_user_id = get_or_create_user_for_tg(tg_user_id, tg_first_name)
+
+        # Запоминаем в сессии
+        session["tg_user_id"] = tg_user_id
+        session["user_id"] = local_user_id
+
+        return jsonify({"ok": True, "user_id": tg_user_id})
+    except ValueError as e:
+        print("AUTH_TG: ошибка проверки:", e)
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        print("AUTH_TG: неожиданная ошибка:", e)
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
+
+
+# ========= ТВОИ МАРШРУТЫ НИЖЕ, с минимальными правками =========
 
 @app.route("/")
 def index():
@@ -424,7 +452,6 @@ def person_page(person_id):
         and p.get("actions_today", 0) >= MAX_ACTIONS_PER_DAY
     )
 
-    # Активная серия сегодня: был знак внимания сегодня
     active_today = (p.get("last_action_date") == today)
 
     return render_template(
@@ -458,36 +485,29 @@ def send_card(person_id):
     p = people[person_id]
     today = today_str()
 
-    # Сброс лимита по дню
     if p.get("last_action_date") != today:
         p["last_action_date"] = today
         p["actions_today"] = 0
 
-    # Серия (streak) с жёстким сбросом уровня и прогресса при пропуске
     last_streak = p.get("last_streak_date")
     if last_streak is None:
-        # Первый день серии
         p["streak_days"] = 1
         p["last_streak_date"] = today
     else:
         if last_streak == today:
-            # Сегодня уже был знак внимания — серия не меняется
             pass
         else:
             last_date = date.fromisoformat(last_streak)
             diff = (date.today() - last_date).days
             if diff == 1:
-                # День подряд — продолжаем серию
                 p["streak_days"] = p.get("streak_days", 0) + 1
                 p["last_streak_date"] = today
             elif diff > 1:
-                # Пропуск: сброс серии, уровня и прогресса
                 p["streak_days"] = 0
                 p["last_streak_date"] = today
                 p["level"] = 1
                 p["xp"] = 0
 
-    # Проверка лимита на сегодня
     if not p.get("dev_mode", False) and p.get("actions_today", 0) >= MAX_ACTIONS_PER_DAY:
         progress = max(0, min(100, p["xp"]))
         gradient, box_shadow, halo_bg = get_gem_style(p["level"], progress)
@@ -504,18 +524,15 @@ def send_card(person_id):
             "streak_days": p.get("streak_days", 0),
         })
 
-    # Если лимит ещё не достигнут — применяем действие
     if not p.get("dev_mode", False):
         p["actions_today"] = p.get("actions_today", 0) + 1
 
     p["xp"] += XP_PER_CARD
 
-    # Ап уровня
     while p["xp"] >= 100 and p["level"] < MAX_LEVEL:
         p["xp"] -= 100
         p["level"] += 1
 
-    # Если упёрлись в MAX_LEVEL, ограничиваем прогресс
     if p["level"] >= MAX_LEVEL and p["xp"] > 100:
         p["xp"] = 100
 
@@ -588,6 +605,7 @@ def delete_person(person_id):
     else:
         return jsonify({"error": "unknown person"}), 404
 
+
 @app.route("/dev/info")
 def dev_info():
     user_id, user = get_current_user()
@@ -620,6 +638,7 @@ def dev_info():
       </body>
     </html>
     """
+
 
 if __name__ == "__main__":
     app.run(debug=True)
