@@ -1,0 +1,183 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tu-tu-ru</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #090e1f;
+        color: #e9e9e9;
+        margin: 0;
+        padding: 16px;
+        }
+      h1 {
+        text-align: center;
+        margin: 8px 0 4px;
+      }
+      .subtitle-top {
+        text-align: center;
+        font-size: 12px;
+        opacity: 0.75;
+        margin-bottom: 16px;
+      }
+      .list-container {
+        max-width: 400px;
+        margin: 0 auto;
+      }
+      .person {
+        border-radius: 12px;
+        padding: 10px 14px;
+        margin-bottom: 10px;
+        background: rgba(255,255,255,0.04);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .person-gem {
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+        clip-path: polygon(50% 0%, 95% 35%, 80% 100%, 20% 100%, 5% 35%);
+        border-radius: 8px;
+      }
+      .person-gem-on {
+        background: linear-gradient(135deg, #3ceaaa, #2b9f73);
+        box-shadow: 0 0 10px rgba(76, 237, 165, 0.9);
+      }
+      .person-gem-off {
+        background: linear-gradient(135deg, #5e997a, #203326);
+        opacity: 0.5;
+      }
+      .person-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .person-name {
+        font-size: 16px;
+      }
+      .person-level {
+        font-size: 12px;
+        opacity: 0.8;
+      }
+      .person-streak {
+        font-size: 11px;
+        opacity: 0.75;
+      }
+      .person-actions {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .person-btn {
+        border: none;
+        border-radius: 999px;
+        padding: 6px 12px;
+        background: linear-gradient(135deg, #3ceaaa, #2b9f73);
+        color: #050811;
+        cursor: pointer;
+        font-size: 12px;
+        box-shadow: 0 0 8px rgba(76,237,165,0.7);
+      }
+      .person-btn:active {
+        transform: scale(0.97);
+        box-shadow: 0 0 4px rgba(76,237,165,0.7);
+      }
+      .add-friend-btn {
+        margin-top: 20px;
+        width: 100%;
+        border: none;
+        border-radius: 999px;
+        padding: 10px 14px;
+        background: linear-gradient(135deg, #4be987, #2b9f73);
+        color: #050811;
+        cursor: pointer;
+        font-size: 14px;
+        box-shadow: 0 0 10px rgba(76,237,165,0.9);
+      }
+      .add-friend-btn:active {
+        transform: scale(0.98);
+        box-shadow: 0 0 6px rgba(76,237,165,0.9);
+      }
+      .username {
+        font-size: 22px;
+        text-align: center;
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+    </style>
+  </head>
+  <script>
+  (function () {
+    // Если страница открыта как Telegram WebApp
+    if (window.Telegram && window.Telegram.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.expand(); // развернуть на весь экран
+
+      const initData = tg.initData;
+
+      async function authWithTelegram() {
+        try {
+          const resp = await fetch("/auth_telegram", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ init_data: initData })
+          });
+          if (!resp.ok) {
+            console.error("Telegram auth failed");
+            return;
+          }
+          const data = await resp.json();
+          if (data.ok) {
+            console.log("Telegram auth ok");
+            // если до этого тебя редиректило на /register, после авторизации это перестанет происходить,
+            // но на всякий случай можно перезагрузить страницу
+            // location.reload();
+          }
+        } catch (e) {
+          console.error("Telegram auth error", e);
+        }
+      }
+
+      authWithTelegram();
+    }
+  })();
+</script>
+  <body>
+    <div class="list-container">
+      <div class="username">{{ user.name }}</div>
+      <h1>С кем вы ведёте серию</h1>
+      <div class="subtitle-top">
+        Добавьте друга, чтобы начать выращивать общий камень.
+      </div>
+
+      {% for pid, pdata in people.items() %}
+      <div class="person">
+        {% set level = pdata.get('level', 1) %}
+        {% set streak = pdata.get('streak_days', 0) %}
+        {% set is_lit = (pdata.get('last_action_date') == today) %}
+        <div class="person-gem {{ 'person-gem-on' if is_lit else 'person-gem-off' }}"></div>
+
+        <div class="person-info">
+          <div class="person-name">{{ pdata.name }}</div>
+          <div class="person-level">Уровень {{ level }}</div>
+          <div class="person-streak">Дней серии: {{ streak }}</div>
+        </div>
+        <div class="person-actions">
+          <button onclick="location.href='/person/{{ pid }}'" class="person-btn">
+            Открыть
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+
+      <button class="add-friend-btn" onclick="location.href='/create'">
+        Добавить друга
+      </button>
+    </div>
+  </body>
+</html>
