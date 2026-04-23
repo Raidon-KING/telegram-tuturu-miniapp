@@ -13,6 +13,7 @@ load_dotenv()  # НОВОЕ: читаем .env
 
 WEBAPP_URL = "https://tuturu-3gfy.onrender.com"
 API_TOKEN = os.environ["BOT_TOKEN"]  # НОВОЕ: берем из окружения
+print("BOT API_TOKEN prefix:", API_TOKEN[:10])
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()

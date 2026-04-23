@@ -156,53 +156,43 @@
     </div>
 
     <script>
-  (function () {
-    if (window.Telegram && window.Telegram.WebApp) {
-      const tg = window.Telegram.WebApp;
-      tg.expand();
+  (async () => {
+    const tg = window.Telegram?.WebApp;
 
-      const initData = tg.initData;
-      console.log("initData:", initData);
+    const debugEl = document.getElementById("debug");
+    function setDebug(msg) {
+      if (debugEl) debugEl.innerText = msg;
+      console.log(msg);
+    }
 
-      const debugEl = document.getElementById("debug-info");
-      if (debugEl) {
-        debugEl.textContent = "initData: " + initData;
+    if (!tg) {
+      setDebug("Telegram WebApp object not found. Открой через бота.");
+      return;
+    }
+
+    const initData = tg.initData || "";
+    console.log("initData from Telegram:", initData);
+
+    setDebug("Загрузка из Telegram...\ninitData: " + initData.slice(0, 200) + "...");
+
+    try {
+      const resp = await fetch("/auth_telegram", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ initData }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        setDebug("HTTP error: " + resp.status + " " + text);
+        return;
       }
 
-      async function authWithTelegram() {
-        try {
-          const resp = await fetch("/auth_telegram", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ init_data: initData })
-          });
-          if (!resp.ok) {
-            if (debugEl) {
-              debugEl.textContent += "\nHTTP error: " + resp.status;
-            }
-            return;
-          }
-          const data = await resp.json();
-          if (data.ok) {
-            if (debugEl) {
-              debugEl.textContent += "\nAuth OK: " + JSON.stringify(data);
-            }
-            window.location.reload();
-          } else {
-            if (debugEl) {
-              debugEl.textContent += "\nAuth error: " + JSON.stringify(data);
-            }
-          }
-        } catch (e) {
-          if (debugEl) {
-            debugEl.textContent += "\nException: " + e.toString();
-          }
-        }
-      }
-
-      authWithTelegram();
-    } else {
-      console.log("Not inside Telegram WebApp");
+      const data = await resp.json();
+      setDebug("Auth OK: " + JSON.stringify(data));
+      // дальше можешь строить UI
+    } catch (e) {
+      setDebug("Fetch error: " + e);
     }
   })();
 </script>
