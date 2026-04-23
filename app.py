@@ -54,39 +54,39 @@ def validate_init_data(init_data: str, bot_token: str) -> dict:
 
     return data
 
+from flask import request, jsonify
+
 @app.route("/auth_telegram", methods=["POST"])
 def auth_telegram():
-    print("AUTH_TG: called")
-    data = request.get_json() or {}
-    init_data = data.get("init_data", "")
-    print("AUTH_TG: init_data length", len(init_data))
+    print("AUTH_TG: вызывается")
 
     try:
-        parsed = validate_init_data(init_data, BOT_TOKEN)
-    except Exception as e:
-        print("AUTH_TG: validate error:", e)
+        data = request.get_json(silent=True) or {}
+        raw_init_data = data.get("initData", "") or ""
+
+        print(f"AUTH_TG: длина init_data {len(raw_init_data)}")
+
+        user_data = validate_init_data(raw_init_data, BOT_TOKEN)
+
+        # user_data — это dict из initData (auth_date, user, query_id и т.д.)
+        # достаём user.id:
+        user_json = user_data.get("user")
+        if isinstance(user_json, str):
+            import json as _json
+            user_obj = _json.loads(user_json)
+        else:
+            user_obj = user_json or {}
+
+        tg_user_id = str(user_obj.get("id"))
+        print("AUTH_TG: success for", tg_user_id)
+
+        return jsonify({"ok": True, "user_id": tg_user_id})
+    except ValueError as e:
+        print("AUTH_TG: ошибка проверки:", e)
         return jsonify({"ok": False, "error": str(e)}), 400
-
-    try:
-        user_info = json.loads(parsed["user"])
     except Exception as e:
-        print("AUTH_TG: user json error:", e)
-        return jsonify({"ok": False, "error": "bad user json"}), 400
-
-    telegram_id = str(user_info["id"])
-    first_name = user_info.get("first_name", "")
-    username = user_info.get("username", "")
-
-    if telegram_id not in users:
-        users[telegram_id] = {
-            "name": first_name or username or f"user_{telegram_id}",
-            "people": {},
-        }
-
-    session["user_id"] = telegram_id
-    print("AUTH_TG: success for", telegram_id)
-
-    return jsonify({"ok": True})
+        print("AUTH_TG: неожиданная ошибка:", e)
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
 
 def load_data():
     global users
