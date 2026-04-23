@@ -155,47 +155,49 @@
       {% endif %}
     </div>
 
-  <div id="debug" style="white-space: pre-wrap; font-family: monospace; font-size: 12px;"></div>
+    <div id="debug" style="white-space: pre-wrap; font-family: monospace; font-size: 12px;"></div>
 
-<script>
-  (async () => {
-    const debugEl = document.getElementById("debug");
-    function setDebug(msg) {
-      if (debugEl) debugEl.innerText = msg;
-      console.log(msg);
-    }
+    <script>
+      (async () => {
+        const debugEl = document.getElementById("debug");
+        function setDebug(msg) {
+          if (debugEl) debugEl.innerText = msg;
+          console.log(msg);
+        }
 
-    const tg = window.Telegram ? window.Telegram.WebApp : null;
+        const tg = window.Telegram ? window.Telegram.WebApp : null;
 
-    if (!tg) {
-      setDebug("Telegram WebApp object not found. Открой через бота.");
-      return;
-    }
+        if (!tg) {
+          setDebug("Telegram WebApp object not found. Открой через бота.");
+          return;
+        }
 
-    const initData = tg.initData || "";
-    console.log("initData from Telegram:", initData);
-    setDebug("Загрузка из Telegram...\ninitData: " + (initData ? initData.slice(0, 200) + "..." : "<пусто>"));
+        const initData = tg.initData || "";
+        console.log("initData from Telegram:", initData);
+        setDebug("Загрузка из Telegram...\ninitData: " + (initData ? initData.slice(0, 200) + "..." : "<пусто>"));
 
-    try {
-      const resp = await fetch("/auth_telegram", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ initData }),
-      });
+        try {
+          const resp = await fetch("/auth_telegram", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ initData }),
+          });
 
-      if (!resp.ok) {
-        const text = await resp.text();
-        setDebug("HTTP error: " + resp.status + "\n" + text);
-        return;
-      }
+          if (!resp.ok) {
+            const text = await resp.text();
+            setDebug("HTTP error: " + resp.status + "\n" + text);
+            return;
+          }
 
-      const data = await resp.json();
-      setDebug("Auth OK: " + JSON.stringify(data));
-      // тут дальше можно рисовать UI
-    } catch (e) {
-      setDebug("Fetch error: " + e);
-    }
-  })();
-</script>
+          const data = await resp.json();
+          setDebug("Auth OK: " + JSON.stringify(data));
+
+          // Главное: перезагрузить страницу, чтобы Flask увидел user в сессии
+          location.reload();
+        } catch (e) {
+          setDebug("Fetch error: " + e);
+        }
+      })();
+    </script>
   </body>
 </html>
