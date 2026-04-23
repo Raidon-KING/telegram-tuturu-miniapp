@@ -114,6 +114,7 @@
   <body>
     {% if not user %}
       <p>Загрузка из Telegram...</p>
+      <pre id="debug-info" style="font-size: 10px; white-space: pre-wrap; opacity: 0.7;"></pre>
     {% else %}
       <h1>Привет, {{ user.name }}</h1>
     {% endif %}
@@ -155,42 +156,55 @@
     </div>
 
     <script>
-      (function () {
-        if (window.Telegram && window.Telegram.WebApp) {
-          const tg = window.Telegram.WebApp;
-          tg.expand();
+  (function () {
+    if (window.Telegram && window.Telegram.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.expand();
 
-          const initData = tg.initData;
-          console.log("initData:", initData);
+      const initData = tg.initData;
+      console.log("initData:", initData);
 
-          async function authWithTelegram() {
-            try {
-              const resp = await fetch("/auth_telegram", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({ init_data: initData })
-              });
-              if (!resp.ok) {
-                console.error("Telegram auth failed");
-                return;
-              }
-              const data = await resp.json();
-              if (data.ok) {
-                console.log("Telegram auth ok");
-                window.location.reload();
-              } else {
-                console.error("Telegram auth response not ok", data);
-              }
-            } catch (e) {
-              console.error("Telegram auth error", e);
+      const debugEl = document.getElementById("debug-info");
+      if (debugEl) {
+        debugEl.textContent = "initData: " + initData;
+      }
+
+      async function authWithTelegram() {
+        try {
+          const resp = await fetch("/auth_telegram", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ init_data: initData })
+          });
+          if (!resp.ok) {
+            if (debugEl) {
+              debugEl.textContent += "\nHTTP error: " + resp.status;
+            }
+            return;
+          }
+          const data = await resp.json();
+          if (data.ok) {
+            if (debugEl) {
+              debugEl.textContent += "\nAuth OK: " + JSON.stringify(data);
+            }
+            window.location.reload();
+          } else {
+            if (debugEl) {
+              debugEl.textContent += "\nAuth error: " + JSON.stringify(data);
             }
           }
-
-          authWithTelegram();
-        } else {
-          console.log("Not inside Telegram WebApp");
+        } catch (e) {
+          if (debugEl) {
+            debugEl.textContent += "\nException: " + e.toString();
+          }
         }
-      })();
-    </script>
+      }
+
+      authWithTelegram();
+    } else {
+      console.log("Not inside Telegram WebApp");
+    }
+  })();
+</script>
   </body>
 </html>
