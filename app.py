@@ -23,6 +23,7 @@ users = {}
 def _get_tg_secret_key(bot_token: str) -> bytes:
     return hashlib.sha256(bot_token.encode()).digest()
 
+
 def validate_init_data(init_data: str, bot_token: str) -> dict:
     # init_data: "query_id=...&user=...&auth_date=...&hash=...&signature=..."
     parsed = dict(parse_qsl(init_data, keep_blank_values=True))
@@ -32,11 +33,12 @@ def validate_init_data(init_data: str, bot_token: str) -> dict:
         print("AUTH_TG: no hash in init_data")
         raise ValueError("No hash in init_data")
 
-    # signature нам не нужен для проверки, уберём, если есть
+    # signature нам не нужен для проверки, убираем на всякий случай
     parsed.pop("signature", None)
 
+    # Собираем строку для проверки
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
-    secret_key = hashlib.sha256(bot_token.encode()).digest()
+    secret_key = _get_tg_secret_key(bot_token)
     calculated_hash = hmac.new(
         key=secret_key,
         msg=data_check_string.encode(),
