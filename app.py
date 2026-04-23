@@ -24,14 +24,19 @@ def _get_tg_secret_key(bot_token: str) -> bytes:
     return hashlib.sha256(bot_token.encode()).digest()
 
 def validate_init_data(init_data: str, bot_token: str) -> dict:
-    # init_data: "query_id=...&user=...&auth_date=...&hash=..."
+    # init_data: "query_id=...&user=...&auth_date=...&hash=...&signature=..."
     parsed = dict(parse_qsl(init_data, keep_blank_values=True))
+
     received_hash = parsed.pop("hash", None)
     if not received_hash:
+        print("AUTH_TG: no hash in init_data")
         raise ValueError("No hash in init_data")
 
+    # signature нам не нужен для проверки, уберём, если есть
+    parsed.pop("signature", None)
+
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
-    secret_key = _get_tg_secret_key(bot_token)
+    secret_key = hashlib.sha256(bot_token.encode()).digest()
     calculated_hash = hmac.new(
         key=secret_key,
         msg=data_check_string.encode(),
@@ -39,33 +44,37 @@ def validate_init_data(init_data: str, bot_token: str) -> dict:
     ).hexdigest()
 
     if calculated_hash != received_hash:
+        print("AUTH_TG: hash mismatch")
+        print("AUTH_TG: data_check_string:", data_check_string)
+        print("AUTH_TG: received_hash:", received_hash)
+        print("AUTH_TG: calculated:", calculated_hash)
         raise ValueError("Invalid init_data hash")
 
     return parsed
 
 @app.route("/auth_telegram", methods=["POST"])
 def auth_telegram():
+    print("AUTH_TG: called")
     data = request.get_json() or {}
     init_data = data.get("init_data", "")
-    if not init_data:
-        return jsonify({"ok": False, "error": "no init_data"}), 400
+    print("AUTH_TG: init_data length", len(init_data))
 
     try:
         parsed = validate_init_data(init_data, BOT_TOKEN)
     except Exception as e:
+        print("AUTH_TG: validate error:", e)
         return jsonify({"ok": False, "error": str(e)}), 400
 
-    # parsed["user"] — JSON-строка с данными юзера
     try:
         user_info = json.loads(parsed["user"])
-    except Exception:
+    except Exception as e:
+        print("AUTH_TG: user json error:", e)
         return jsonify({"ok": False, "error": "bad user json"}), 400
 
     telegram_id = str(user_info["id"])
     first_name = user_info.get("first_name", "")
     username = user_info.get("username", "")
 
-    # ищем/создаем юзера в users по telegram_id
     if telegram_id not in users:
         users[telegram_id] = {
             "name": first_name or username or f"user_{telegram_id}",
@@ -73,6 +82,7 @@ def auth_telegram():
         }
 
     session["user_id"] = telegram_id
+    print("AUTH_TG: success for", telegram_id)
 
     return jsonify({"ok": True})
 
