@@ -12,7 +12,7 @@
         color: #e9e9e9;
         margin: 0;
         padding: 16px;
-        }
+      }
       h1 {
         text-align: center;
         margin: 8px 0 4px;
@@ -111,45 +111,17 @@
       }
     </style>
   </head>
-  <script>
-  (function () {
-    // Если страница открыта как Telegram WebApp
-    if (window.Telegram && window.Telegram.WebApp) {
-      const tg = window.Telegram.WebApp;
-      tg.expand(); // развернуть на весь экран
-
-      const initData = tg.initData;
-
-      async function authWithTelegram() {
-        try {
-          const resp = await fetch("/auth_telegram", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ init_data: initData })
-          });
-          if (!resp.ok) {
-            console.error("Telegram auth failed");
-            return;
-          }
-          const data = await resp.json();
-          if (data.ok) {
-            console.log("Telegram auth ok");
-            // если до этого тебя редиректило на /register, после авторизации это перестанет происходить,
-            // но на всякий случай можно перезагрузить страницу
-            // location.reload();
-          }
-        } catch (e) {
-          console.error("Telegram auth error", e);
-        }
-      }
-
-      authWithTelegram();
-    }
-  })();
-</script>
   <body>
+    {% if not user %}
+      <p>Загрузка из Telegram...</p>
+    {% else %}
+      <h1>Привет, {{ user.name }}</h1>
+    {% endif %}
+
     <div class="list-container">
-      <div class="username">{{ user.name }}</div>
+      {% if user %}
+        <div class="username">{{ user.name }}</div>
+      {% endif %}
       <h1>С кем вы ведёте серию</h1>
       <div class="subtitle-top">
         Добавьте друга, чтобы начать выращивать общий камень.
@@ -175,44 +147,50 @@
       </div>
       {% endfor %}
 
+      {% if user %}
       <button class="add-friend-btn" onclick="location.href='/create'">
         Добавить друга
       </button>
+      {% endif %}
     </div>
+
     <script>
-  (function () {
-    // Если страница открыта как Telegram Mini App
-    if (window.Telegram && window.Telegram.WebApp) {
-      const tg = window.Telegram.WebApp;
-      tg.expand();
+      (function () {
+        if (window.Telegram && window.Telegram.WebApp) {
+          const tg = window.Telegram.WebApp;
+          tg.expand();
 
-      const initData = tg.initData;
+          const initData = tg.initData;
+          console.log("initData:", initData);
 
-      async function authWithTelegram() {
-        try {
-          const resp = await fetch("/auth_telegram", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ init_data: initData })
-          });
-          if (!resp.ok) {
-            console.error("Telegram auth failed");
-            return;
+          async function authWithTelegram() {
+            try {
+              const resp = await fetch("/auth_telegram", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({ init_data: initData })
+              });
+              if (!resp.ok) {
+                console.error("Telegram auth failed");
+                return;
+              }
+              const data = await resp.json();
+              if (data.ok) {
+                console.log("Telegram auth ok");
+                window.location.reload();
+              } else {
+                console.error("Telegram auth response not ok", data);
+              }
+            } catch (e) {
+              console.error("Telegram auth error", e);
+            }
           }
-          const data = await resp.json();
-          if (data.ok) {
-            console.log("Telegram auth ok");
-            // Можно перезагрузить страницу, но часто не нужно:
-            // location.reload();
-          }
-        } catch (e) {
-          console.error("Telegram auth error", e);
+
+          authWithTelegram();
+        } else {
+          console.log("Not inside Telegram WebApp");
         }
-      }
-
-      authWithTelegram();
-    }
-  })();
-</script>
+      })();
+    </script>
   </body>
 </html>

@@ -152,11 +152,7 @@ def today_str():
 @app.route("/")
 def index():
     user_id, user = get_current_user()
-    if not user:
-        # Если зашли не из Telegram и нет сессии — простое сообщение
-        return "Пожалуйста, откройте это приложение через Telegram-бота.", 401
-
-    people = user.get("people", {})
+    people = user.get("people", {}) if user else {}
     today = today_str()
 
     return render_template(
