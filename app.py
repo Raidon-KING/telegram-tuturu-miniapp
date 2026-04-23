@@ -27,33 +27,32 @@ def _get_tg_secret_key(bot_token: str) -> bytes:
 
 def validate_init_data(init_data: str, bot_token: str) -> dict:
     # init_data: "query_id=...&user=...&auth_date=...&hash=...&signature=..."
-    parsed = dict(parse_qsl(init_data, keep_blank_values=True))
+    data = dict(parse_qsl(init_data, keep_blank_values=True))
 
-    received_hash = parsed.pop("hash", None)
+    received_hash = data.pop("hash", None)
     if not received_hash:
         print("AUTH_TG: no hash in init_data")
         raise ValueError("No hash in init_data")
 
-    # signature нам не нужен для проверки, убираем на всякий случай
-    parsed.pop("signature", None)
+    # signature нам не нужен
+    data.pop("signature", None)
 
-    # Собираем строку для проверки
-    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+    # Формируем data_check_string строго по доке Telegram
+    # https://core.telegram.org/bots/webapps#validating-data-received-via-the-web-app
+    check_list = [f"{k}={v}" for k, v in sorted(data.items())]
+    data_check_string = "\n".join(check_list)
+
     secret_key = _get_tg_secret_key(bot_token)
-    calculated_hash = hmac.new(
-        key=secret_key,
-        msg=data_check_string.encode(),
-        digestmod=hashlib.sha256,
-    ).hexdigest()
+    hmac_hash = hmac.new(secret_key, msg=data_check_string.encode(), digestmod=hashlib.sha256).hexdigest()
 
-    if calculated_hash != received_hash:
-        print("AUTH_TG: hash mismatch")
-        print("AUTH_TG: data_check_string:", data_check_string)
-        print("AUTH_TG: received_hash:", received_hash)
-        print("AUTH_TG: calculated:", calculated_hash)
+    print("AUTH_TG: data_check_string:", data_check_string)
+    print("AUTH_TG: received_hash:", received_hash)
+    print("AUTH_TG: calculated   :", hmac_hash)
+
+    if hmac_hash != received_hash:
         raise ValueError("Invalid init_data hash")
 
-    return parsed
+    return data
 
 @app.route("/auth_telegram", methods=["POST"])
 def auth_telegram():
