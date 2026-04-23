@@ -20,6 +20,61 @@ DATA_FILE = "data.json"
 # users = { user_id: { "name": ..., "people": {person_id: {...}, ...} } }
 users = {}
 
+def _get_tg_secret_key(bot_token: str) -> bytes:
+    return hashlib.sha256(bot_token.encode()).digest()
+
+def validate_init_data(init_data: str, bot_token: str) -> dict:
+    # init_data: "query_id=...&user=...&auth_date=...&hash=..."
+    parsed = dict(parse_qsl(init_data, keep_blank_values=True))
+    received_hash = parsed.pop("hash", None)
+    if not received_hash:
+        raise ValueError("No hash in init_data")
+
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+    secret_key = _get_tg_secret_key(bot_token)
+    calculated_hash = hmac.new(
+        key=secret_key,
+        msg=data_check_string.encode(),
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+
+    if calculated_hash != received_hash:
+        raise ValueError("Invalid init_data hash")
+
+    return parsed
+
+@app.route("/auth_telegram", methods=["POST"])
+def auth_telegram():
+    data = request.get_json() or {}
+    init_data = data.get("init_data", "")
+    if not init_data:
+        return jsonify({"ok": False, "error": "no init_data"}), 400
+
+    try:
+        parsed = validate_init_data(init_data, BOT_TOKEN)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    # parsed["user"] — JSON-строка с данными юзера
+    try:
+        user_info = json.loads(parsed["user"])
+    except Exception:
+        return jsonify({"ok": False, "error": "bad user json"}), 400
+
+    telegram_id = str(user_info["id"])
+    first_name = user_info.get("first_name", "")
+    username = user_info.get("username", "")
+
+    # ищем/создаем юзера в users по telegram_id
+    if telegram_id not in users:
+        users[telegram_id] = {
+            "name": first_name or username or f"user_{telegram_id}",
+            "people": {},
+        }
+
+    session["user_id"] = telegram_id
+
+    return jsonify({"ok": True})
 
 def load_data():
     global users
@@ -98,7 +153,8 @@ def today_str():
 def index():
     user_id, user = get_current_user()
     if not user:
-        return redirect("/register")
+        # Если зашли не из Telegram и нет сессии — простое сообщение
+        return "Пожалуйста, откройте это приложение через Telegram-бота.", 401
 
     people = user.get("people", {})
     today = today_str()

@@ -179,5 +179,40 @@
         Добавить друга
       </button>
     </div>
+    <script>
+  (function () {
+    // Если страница открыта как Telegram Mini App
+    if (window.Telegram && window.Telegram.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.expand();
+
+      const initData = tg.initData;
+
+      async function authWithTelegram() {
+        try {
+          const resp = await fetch("/auth_telegram", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ init_data: initData })
+          });
+          if (!resp.ok) {
+            console.error("Telegram auth failed");
+            return;
+          }
+          const data = await resp.json();
+          if (data.ok) {
+            console.log("Telegram auth ok");
+            // Можно перезагрузить страницу, но часто не нужно:
+            // location.reload();
+          }
+        } catch (e) {
+          console.error("Telegram auth error", e);
+        }
+      }
+
+      authWithTelegram();
+    }
+  })();
+</script>
   </body>
 </html>
