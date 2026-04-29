@@ -165,7 +165,12 @@
           const resp = await fetch("/get_ref_link");
           const data = await resp.json();
           if (data.link) {
-            tg.showAlert("Отправь эту ссылку другу:\n" + data.link);
+            const shareUrl =
+              "https://t.me/share/url?url=" +
+              encodeURIComponent(data.link) +
+              "&text=" +
+              encodeURIComponent("Заходи, это наш общий камень 🔷");
+            tg.openTelegramLink(shareUrl);
           } else {
             setDebug("Ошибка получения ссылки: " + JSON.stringify(data));
           }
@@ -215,7 +220,6 @@
 
           const data = await resp.json();
           setDebug("Auth OK: " + JSON.stringify(data));
-          // После первой авторизации перезагружаем, чтобы index() увидел user
           if (data.ok) {
             location.reload();
           }
