@@ -1,7 +1,6 @@
 from datetime import date
 from flask import Flask, jsonify, request, redirect, session, render_template
 import uuid
-import hmac
 import hashlib
 from urllib.parse import parse_qsl
 import json
@@ -11,6 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "YourBotName")  # добавь в .env
 print("APP BOT_TOKEN prefix:", BOT_TOKEN[:10])
 
 app = Flask(__name__)
@@ -18,16 +18,33 @@ app.secret_key = "SOME_SECRET_FOR_SESSION"  # замени на случайну
 
 DATA_FILE = "data.json"
 
-# users = { user_id: { "name": ..., "people": {person_id: {...}, ...}, "tg_user_id": ... } }
+# users = {
+#   user_id: {
+#       "name": ...,
+#       "tg_user_id": ...,
+#       "people": {
+#           person_id: {
+#               "name": ...,
+#               "level": int,
+#               "xp": int,
+#               "last_action_date": str|None,
+#               "actions_today": int,
+#               "dev_mode": bool,
+#               "streak_days": int,
+#               "last_streak_date": str|None,
+#               "linked_user_id": str|None,
+#           },
+#           ...
+#       }
+#   }
+# }
 users = {}
 
-
-def _get_tg_secret_key(bot_token: str) -> bytes:
-    return hashlib.sha256(bot_token.encode()).digest()
-
-
-# ВРЕМЕННО: без проверки подписи initData, только парсинг
 def validate_init_data(init_data: str, bot_token: str) -> dict:
+    """
+    Упрощённый вариант: разбираем initData в dict без проверки подписи.
+    Для продакшена нужно вернуть HMAC-проверку по документации Telegram.
+    """
     data = dict(parse_qsl(init_data, keep_blank_values=True))
 
     user_raw = data.get("user")
@@ -39,7 +56,6 @@ def validate_init_data(init_data: str, bot_token: str) -> dict:
 
     print("AUTH_TG: WARNING: hash validation DISABLED")
     return data
-
 
 def load_data():
     global users
@@ -53,7 +69,6 @@ def load_data():
     except Exception:
         pass
 
-
 def save_data():
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
@@ -61,13 +76,11 @@ def save_data():
     except Exception:
         pass
 
-
 load_data()
 
 XP_PER_CARD = 15
 MAX_LEVEL = 5
 MAX_ACTIONS_PER_DAY = 1
-
 
 def get_gem_style(level: int, progress: int):
     t = max(0.0, min(1.0, progress / 100.0))
@@ -99,10 +112,8 @@ def get_gem_style(level: int, progress: int):
 
     return gradient, box_shadow, halo_background
 
-
 def generate_id():
     return uuid.uuid4().hex[:8]
-
 
 def get_current_user():
     user_id = session.get("user_id")
@@ -110,23 +121,14 @@ def get_current_user():
         return None, None
     return user_id, users[user_id]
 
-
 def today_str():
     return date.today().isoformat()
 
-
-# ========= НОВОЕ: связка Telegram -> users =========
-
 def get_or_create_user_for_tg(tg_user_id: str, tg_first_name: str | None = None) -> str:
-    """
-    Находим или создаём пользователя в нашей локальной БД для данного Telegram user id.
-    """
-    # 1) попытаться найти существующего по tg_user_id
     for uid, udata in users.items():
         if udata.get("tg_user_id") == tg_user_id:
             return uid
 
-    # 2) если не нашли — создать нового
     name = tg_first_name or f"Пользователь {tg_user_id}"
     new_user_id = generate_id()
     users[new_user_id] = {
@@ -137,6 +139,63 @@ def get_or_create_user_for_tg(tg_user_id: str, tg_first_name: str | None = None)
     save_data()
     return new_user_id
 
+def process_referral(new_user_id: str, start_param: str | None):
+    """
+    Создаём пару камней между пригласившим (owner) и приглашённым (new_user),
+    если пришёл валидный start_param вида "ref_<owner_user_id>".
+    """
+    if not start_param:
+        return
+
+    if not isinstance(start_param, str):
+        return
+
+    if not start_param.startswith("ref_"):
+        return
+
+    owner_user_id = start_param[4:]
+    if owner_user_id == new_user_id:
+        return
+    if owner_user_id not in users or new_user_id not in users:
+        return
+
+    owner = users[owner_user_id]
+    invited = users[new_user_id]
+
+    # Проверим, что у них ещё нет связи
+    for p in owner.get("people", {}).values():
+        if p.get("linked_user_id") == new_user_id:
+            return
+
+    owner_person_id = generate_id()
+    invited_person_id = generate_id()
+
+    owner["people"][owner_person_id] = {
+        "name": invited.get("name", "Друг"),
+        "level": 1,
+        "xp": 0,
+        "last_action_date": None,
+        "actions_today": 0,
+        "dev_mode": False,
+        "streak_days": 0,
+        "last_streak_date": None,
+        "linked_user_id": new_user_id,
+    }
+
+    invited["people"][invited_person_id] = {
+        "name": owner.get("name", "Друг"),
+        "level": 1,
+        "xp": 0,
+        "last_action_date": None,
+        "actions_today": 0,
+        "dev_mode": False,
+        "streak_days": 0,
+        "last_streak_date": None,
+        "linked_user_id": owner_user_id,
+    }
+
+    save_data()
+    print(f"REFERRAL: created link {owner_user_id} <-> {new_user_id} with start_param={start_param}")
 
 @app.route("/auth_telegram", methods=["POST"])
 def auth_telegram():
@@ -145,8 +204,9 @@ def auth_telegram():
     try:
         data = request.get_json(silent=True) or {}
         raw_init_data = data.get("initData", "") or ""
+        start_param = data.get("start_param") or data.get("startParam")
 
-        print(f"AUTH_TG: длина init_data {len(raw_init_data)}")
+        print(f"AUTH_TG: длина init_data {len(raw_init_data)}, start_param={start_param}")
 
         user_data = validate_init_data(raw_init_data, BOT_TOKEN)
 
@@ -158,14 +218,13 @@ def auth_telegram():
 
         tg_user_id = str(user_obj.get("id"))
         tg_first_name = user_obj.get("first_name") or user_obj.get("username") or None
-        print("AUTH_TG: success for", tg_user_id)
-
-        # Привязываем к локальному пользователю
         local_user_id = get_or_create_user_for_tg(tg_user_id, tg_first_name)
 
-        # Запоминаем в сессии
         session["tg_user_id"] = tg_user_id
         session["user_id"] = local_user_id
+
+        # Обработка реферального параметра
+        process_referral(local_user_id, start_param)
 
         return jsonify({"ok": True, "user_id": tg_user_id})
     except ValueError as e:
@@ -174,9 +233,6 @@ def auth_telegram():
     except Exception as e:
         print("AUTH_TG: неожиданная ошибка:", e)
         return jsonify({"ok": False, "error": "Internal server error"}), 500
-
-
-# ========= ТВОИ МАРШРУТЫ НИЖЕ, с минимальными правками =========
 
 @app.route("/")
 def index():
@@ -191,246 +247,11 @@ def index():
         today=today,
     )
 
-
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    user_id, user = get_current_user()
-    if user:
-        return redirect("/")
-
-    error = None
-
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        if not name:
-            error = "Пожалуйста, введите имя."
-        else:
-            new_user_id = generate_id()
-            users[new_user_id] = {
-                "name": name,
-                "people": {}
-            }
-            session["user_id"] = new_user_id
-            save_data()
-            return redirect("/")
-
-    error_html = f"<div class='error'>{error}</div>" if error else ""
-
-    html = f"""
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Добро пожаловать</title>
-        <style>
-          body {{
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background: radial-gradient(circle at top, #16243a 0, #050811 60%, #020308 100%);
-            color: #f5f5f5;
-            margin: 0;
-            padding: 16px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-          }}
-          .box {{
-            width: 100%;
-            max-width: 360px;
-            background: rgba(0,0,0,0.45);
-            border-radius: 16px;
-            padding: 16px 18px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.7);
-          }}
-          h2 {{
-            margin-top: 0;
-            margin-bottom: 8px;
-            text-align: center;
-          }}
-          .subtitle {{
-            font-size: 13px;
-            opacity: 0.8;
-            text-align: center;
-            margin-bottom: 16px;
-          }}
-          label {{
-            display: block;
-            font-size: 13px;
-            margin-bottom: 4px;
-          }}
-          input[type="text"] {{
-            width: 100%;
-            border-radius: 999px;
-            border: none;
-            padding: 8px 12px;
-            font-size: 14px;
-            outline: none;
-            margin-bottom: 12px;
-          }}
-          .error {{
-            color: #ffb3b3;
-            font-size: 12px;
-            margin-bottom: 8px;
-          }}
-          .submit-btn {{
-            width: 100%;
-            border: none;
-            border-radius: 999px;
-            padding: 8px 12px;
-            font-size: 14px;
-            cursor: pointer;
-            background: linear-gradient(135deg, #3ceaaa, #2b9f73);
-            color: #050811;
-            box-shadow: 0 0 10px rgba(76,237,165,0.8);
-          }}
-        </style>
-      </head>
-      <body>
-        <div class="box">
-          <h2>Привет!</h2>
-          <div class="subtitle">
-            Давай познакомимся. Введи имя, которое будем показывать внутри камня.
-          </div>
-          <form method="post">
-            <label for="name">Как тебя зовут?</label>
-            <input id="name" name="name" type="text" placeholder="Например, Райдон" />
-            {error_html}
-            <button type="submit" class="submit-btn">Продолжить</button>
-          </form>
-        </div>
-      </body>
-    </html>
-    """
-    return html
-
-
-@app.route("/create", methods=["GET", "POST"])
-def create_person():
-    user_id, user = get_current_user()
-    if not user:
-        return redirect("/register")
-
-    error = None
-
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        if not name:
-            error = "Пожалуйста, введите имя."
-        else:
-            person_id = generate_id()
-            user["people"][person_id] = {
-                "name": name,
-                "level": 1,
-                "xp": 0,
-                "last_action_date": None,
-                "actions_today": 0,
-                "dev_mode": False,
-                "streak_days": 0,
-                "last_streak_date": None,
-            }
-            save_data()
-            return redirect(f"/person/{person_id}")
-
-    error_html = f"<div class='error'>{error}</div>" if error else ""
-
-    html = f"""
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Добавить друга</title>
-        <style>
-          body {{
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background: radial-gradient(circle at top, #16243a 0, #050811 60%, #020308 100%);
-            color: #f5f5f5;
-            margin: 0;
-            padding: 16px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-          }}
-          .box {{
-            width: 100%;
-            max-width: 360px;
-            background: rgba(0,0,0,0.45);
-            border-radius: 16px;
-            padding: 16px 18px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.7);
-          }}
-          h2 {{
-            margin-top: 0;
-            margin-bottom: 12px;
-            text-align: center;
-          }}
-          label {{
-            display: block;
-            font-size: 13px;
-            margin-bottom: 4px;
-          }}
-          input[type="text"] {{
-            width: 100%;
-            border-radius: 999px;
-            border: none;
-            padding: 8px 12px;
-            font-size: 14px;
-            outline: none;
-            margin-bottom: 12px;
-          }}
-          .error {{
-            color: #ffb3b3;
-            font-size: 12px;
-            margin-bottom: 8px;
-          }}
-          .btn-row {{
-            display: flex;
-            justify-content: space-between;
-            gap: 8px;
-          }}
-          button {{
-            flex: 1;
-            border: none;
-            border-radius: 999px;
-            padding: 8px 12px;
-            font-size: 14px;
-            cursor: pointer;
-          }}
-          .submit-btn {{
-            background: linear-gradient(135deg, #3ceaaa, #2b9f73);
-            color: #050811;
-            box-shadow: 0 0 10px rgba(76,237,165,0.8);
-          }}
-          .cancel-btn {{
-            background: rgba(255,255,255,0.08);
-            color: #c5ffda;
-          }}
-        </style>
-      </head>
-      <body>
-        <div class="box">
-          <h2>Добавить друга</h2>
-          <form method="post">
-            <label for="name">Введите имя друга</label>
-            <input id="name" name="name" type="text" placeholder="Например, Аня" />
-            {error_html}
-            <div class="btn-row">
-              <button type="button" class="cancel-btn" onclick="location.href='/'">Отмена</button>
-              <button type="submit" class="submit-btn">Создать камень</button>
-            </div>
-          </form>
-        </div>
-      </body>
-    </html>
-    """
-    return html
-
-
 @app.route("/person/<person_id>")
 def person_page(person_id):
     user_id, user = get_current_user()
     if not user:
-        return redirect("/register")
+        return "no user in session", 400
 
     people = user["people"]
     if person_id not in people:
@@ -470,7 +291,6 @@ def person_page(person_id):
         limit_reached=limit_reached,
         active_today=active_today,
     )
-
 
 @app.route("/send_card/<person_id>", methods=["POST"])
 def send_card(person_id):
@@ -554,7 +374,6 @@ def send_card(person_id):
         "streak_days": p.get("streak_days", 0),
     })
 
-
 @app.route("/dev_toggle/<person_id>", methods=["POST"])
 def dev_toggle(person_id):
     user_id, user = get_current_user()
@@ -590,7 +409,6 @@ def dev_toggle(person_id):
         "streak_days": p.get("streak_days", 0),
     })
 
-
 @app.route("/delete_person/<person_id>", methods=["POST"])
 def delete_person(person_id):
     user_id, user = get_current_user()
@@ -604,7 +422,6 @@ def delete_person(person_id):
         return jsonify({"status": "ok"})
     else:
         return jsonify({"error": "unknown person"}), 404
-
 
 @app.route("/dev/info")
 def dev_info():
@@ -639,6 +456,18 @@ def dev_info():
     </html>
     """
 
+@app.route("/get_ref_link")
+def get_ref_link():
+    """
+    Возвращает реферальную ссылку для текущего пользователя.
+    """
+    user_id, user = get_current_user()
+    if not user:
+        return jsonify({"error": "no user"}), 400
+
+    ref_code = f"ref_{user_id}"
+    link = f"https://t.me/{BOT_USERNAME}?startapp={ref_code}"
+    return jsonify({"link": link})
 
 if __name__ == "__main__":
     app.run(debug=True)

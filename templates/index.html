@@ -112,17 +112,9 @@
     </style>
   </head>
   <body>
-    {% if not user %}
-      <p>Загрузка из Telegram...</p>
-      <pre id="debug-info" style="font-size: 10px; white-space: pre-wrap; opacity: 0.7;"></pre>
-    {% else %}
-      <h1>Привет, {{ user.name }}</h1>
-    {% endif %}
-
     <div class="list-container">
-      {% if user %}
-        <div class="username">{{ user.name }}</div>
-      {% endif %}
+      <div class="username">Загрузка имени…</div>
+
       <h1>С кем вы ведёте серию</h1>
       <div class="subtitle-top">
         Добавьте друга, чтобы начать выращивать общий камень.
@@ -148,39 +140,71 @@
       </div>
       {% endfor %}
 
-      {% if user %}
-      <button class="add-friend-btn" onclick="location.href='/create'">
+      <button class="add-friend-btn" onclick="inviteFriend()">
         Добавить друга
       </button>
-      {% endif %}
     </div>
 
     <div id="debug" style="white-space: pre-wrap; font-family: monospace; font-size: 12px;"></div>
 
     <script>
-      (async () => {
+      const tg = window.Telegram ? window.Telegram.WebApp : null;
+
+      function setDebug(msg) {
         const debugEl = document.getElementById("debug");
-        function setDebug(msg) {
-          if (debugEl) debugEl.innerText = msg;
-          console.log(msg);
+        if (debugEl) debugEl.innerText = msg;
+        console.log(msg);
+      }
+
+      async function inviteFriend() {
+        if (!tg) {
+          alert("Откройте приложение внутри Telegram.");
+          return;
         }
+        try {
+          const resp = await fetch("/get_ref_link");
+          const data = await resp.json();
+          if (data.link) {
+            tg.showAlert("Отправь эту ссылку другу:\n" + data.link);
+          } else {
+            setDebug("Ошибка получения ссылки: " + JSON.stringify(data));
+          }
+        } catch (e) {
+          setDebug("Invite error: " + e);
+        }
+      }
 
-        const tg = window.Telegram ? window.Telegram.WebApp : null;
-
+      (async () => {
         if (!tg) {
           setDebug("Telegram WebApp object not found. Открой через бота.");
           return;
         }
 
+        const unsafe = tg.initDataUnsafe || {};
+        const tUser = unsafe.user || null;
+        const nameDiv = document.querySelector(".username");
+
+        if (tUser && nameDiv) {
+          const fullName = [tUser.first_name, tUser.last_name].filter(Boolean).join(" ");
+          nameDiv.textContent = fullName || tUser.username || "Имя не найдено";
+        } else if (nameDiv) {
+          nameDiv.textContent = "Откройте приложение внутри Telegram";
+        }
+
+        const startParam = unsafe.start_param || null;
         const initData = tg.initData || "";
-        console.log("initData from Telegram:", initData);
-        setDebug("Загрузка из Telegram...\ninitData: " + (initData ? initData.slice(0, 200) + "..." : "<пусто>"));
+        setDebug(
+          "Загрузка из Telegram...\nstart_param: " +
+            (startParam || "<нет>") +
+            "\ninitData: " +
+            (initData ? initData.slice(0, 200) + "..." : "<пусто>")
+        );
 
         try {
           const resp = await fetch("/auth_telegram", {
             method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ initData }),
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initData, start_param: startParam }),
           });
 
           if (!resp.ok) {
@@ -191,9 +215,10 @@
 
           const data = await resp.json();
           setDebug("Auth OK: " + JSON.stringify(data));
-
-          // Главное: перезагрузить страницу, чтобы Flask увидел user в сессии
-          location.reload();
+          // После первой авторизации перезагружаем, чтобы index() увидел user
+          if (data.ok) {
+            location.reload();
+          }
         } catch (e) {
           setDebug("Fetch error: " + e);
         }
