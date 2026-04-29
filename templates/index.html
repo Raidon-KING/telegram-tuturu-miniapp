@@ -109,6 +109,13 @@
         font-weight: 500;
         margin-bottom: 4px;
       }
+      #debug {
+        white-space: pre-wrap;
+        font-family: monospace;
+        font-size: 11px;
+        opacity: 0.7;
+        margin-top: 8px;
+      }
     </style>
   </head>
   <body>
@@ -145,33 +152,40 @@
       </button>
     </div>
 
-    <div id="debug" style="white-space: pre-wrap; font-family: monospace; font-size: 12px;"></div>
+    <div id="debug"></div>
 
     <script>
       const tg = window.Telegram ? window.Telegram.WebApp : null;
 
       function setDebug(msg) {
         const debugEl = document.getElementById("debug");
-        if (debugEl) debugEl.innerText = msg;
+        if (debugEl) debugEl.textContent = msg;
         console.log(msg);
       }
 
       async function inviteFriend() {
         if (!tg) {
-          alert("Откройте приложение внутри Telegram.");
+          alert("Открой мини‑приложение из Telegram.");
           return;
         }
         try {
+          setDebug("Запрашиваем реферальную ссылку...");
           const resp = await fetch("/get_ref_link");
           const data = await resp.json();
+
           if (data.link) {
+            setDebug("Реферальная ссылка получена.");
             // Открываем чат с ботом по реф-ссылке
             tg.openTelegramLink(data.link);
           } else {
-            setDebug("Ошибка получения ссылки: " + JSON.stringify(data));
+            const msg = "Ошибка получения ссылки: " + JSON.stringify(data);
+            setDebug(msg);
+            alert(msg);
           }
         } catch (e) {
-          setDebug("Invite error: " + e);
+          const msg = "Invite error: " + e;
+          setDebug(msg);
+          alert(msg);
         }
       }
 
@@ -194,11 +208,12 @@
 
         const startParam = unsafe.start_param || null;
         const initData = tg.initData || "";
+
         setDebug(
-          "Загрузка из Telegram...\nstart_param: " +
+          "start_param: " +
             (startParam || "<нет>") +
-            "\ninitData: " +
-            (initData ? initData.slice(0, 200) + "..." : "<пусто>")
+            "\ninitData (обрезано): " +
+            (initData ? initData.slice(0, 120) + "..." : "<пусто>")
         );
 
         try {
@@ -210,17 +225,20 @@
 
           if (!resp.ok) {
             const text = await resp.text();
-            setDebug("HTTP error: " + resp.status + "\n" + text);
+            const msg = "HTTP error: " + resp.status + "\n" + text;
+            setDebug(msg);
             return;
           }
 
           const data = await resp.json();
           setDebug("Auth OK: " + JSON.stringify(data));
           if (data.ok) {
+            // Перезагрузим один раз, чтобы index() точно увидел user
             location.reload();
           }
         } catch (e) {
-          setDebug("Fetch error: " + e);
+          const msg = "Fetch error: " + e;
+          setDebug(msg);
         }
       })();
     </script>
