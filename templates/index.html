@@ -157,27 +157,24 @@
       }
 
       async function inviteFriend() {
-        if (!tg) {
-          alert("Откройте приложение внутри Telegram.");
-          return;
-        }
-        try {
-          const resp = await fetch("/get_ref_link");
-          const data = await resp.json();
-          if (data.link) {
-            const shareUrl =
-              "https://t.me/share/url?url=" +
-              encodeURIComponent(data.link) +
-              "&text=" +
-              encodeURIComponent("Заходи, это наш общий камень 🔷");
-            tg.openTelegramLink(shareUrl);
-          } else {
-            setDebug("Ошибка получения ссылки: " + JSON.stringify(data));
-          }
-        } catch (e) {
-          setDebug("Invite error: " + e);
-        }
-      }
+  if (!tg) {
+    alert("Откройте приложение внутри Telegram.");
+    return;
+  }
+  try {
+    const resp = await fetch("/get_ref_link");
+    const data = await resp.json();
+    if (data.link) {
+      // Открываем чат с ботом по реф-ссылке
+      tg.openTelegramLink(data.link);
+    } else {
+      setDebug("Ошибка получения ссылки: " + JSON.stringify(data));
+    }
+  } catch (e) {
+    setDebug("Invite error: " + e);
+  }
+}
+
 
       (async () => {
         if (!tg) {
