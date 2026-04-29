@@ -1,7 +1,6 @@
 from datetime import date
-from flask import Flask, jsonify, request, redirect, session, render_template
+from flask import Flask, jsonify, request, session, render_template
 import uuid
-import hashlib
 from urllib.parse import parse_qsl
 import json
 import os
@@ -10,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-BOT_USERNAME = os.environ.get("BOT_USERNAME", "YourBotName")  # добавь в .env
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "our_tuturu_bot")
 print("APP BOT_TOKEN prefix:", BOT_TOKEN[:10])
 
 app = Flask(__name__)
@@ -43,7 +42,7 @@ users = {}
 def validate_init_data(init_data: str, bot_token: str) -> dict:
     """
     Упрощённый вариант: разбираем initData в dict без проверки подписи.
-    Для продакшена нужно вернуть HMAC-проверку по документации Telegram.
+    Для продакшена надо добавить HMAC-проверку по документации Telegram.
     """
     data = dict(parse_qsl(init_data, keep_blank_values=True))
 
@@ -162,7 +161,7 @@ def process_referral(new_user_id: str, start_param: str | None):
     owner = users[owner_user_id]
     invited = users[new_user_id]
 
-    # Проверим, что у них ещё нет связи
+    # Уже есть связь?
     for p in owner.get("people", {}).values():
         if p.get("linked_user_id") == new_user_id:
             return

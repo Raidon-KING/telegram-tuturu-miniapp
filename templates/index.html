@@ -103,6 +103,11 @@
         transform: scale(0.98);
         box-shadow: 0 0 6px rgba(76,237,165,0.9);
       }
+      .add-friend-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+        box-shadow: none;
+      }
       .username {
         font-size: 22px;
         text-align: center;
@@ -147,7 +152,7 @@
       </div>
       {% endfor %}
 
-      <button class="add-friend-btn" onclick="inviteFriend()">
+      <button class="add-friend-btn" id="invite-btn" onclick="inviteFriend()" disabled>
         Добавить друга
       </button>
     </div>
@@ -156,9 +161,10 @@
 
     <script>
       const tg = window.Telegram ? window.Telegram.WebApp : null;
+      const debugEl = document.getElementById("debug");
+      const inviteBtn = document.getElementById("invite-btn");
 
       function setDebug(msg) {
-        const debugEl = document.getElementById("debug");
         if (debugEl) debugEl.textContent = msg;
         console.log(msg);
       }
@@ -175,7 +181,6 @@
 
           if (data.link) {
             setDebug("Реферальная ссылка получена.");
-            // Открываем чат с ботом по реф-ссылке
             tg.openTelegramLink(data.link);
           } else {
             const msg = "Ошибка получения ссылки: " + JSON.stringify(data);
@@ -216,7 +221,6 @@
             (initData ? initData.slice(0, 120) + "..." : "<пусто>")
         );
 
-                /*
         try {
           const resp = await fetch("/auth_telegram", {
             method: "POST",
@@ -233,16 +237,15 @@
 
           const data = await resp.json();
           setDebug("Auth OK: " + JSON.stringify(data));
+
           if (data.ok) {
-            // Перезагрузим один раз, чтобы index() точно увидел user
-            location.reload();
+            // Включаем кнопку приглашения только после успешной авторизации
+            if (inviteBtn) inviteBtn.disabled = false;
           }
         } catch (e) {
           const msg = "Fetch error: " + e;
           setDebug(msg);
         }
-        */
-
       })();
     </script>
   </body>
