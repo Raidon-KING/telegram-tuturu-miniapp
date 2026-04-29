@@ -181,7 +181,15 @@
 
           if (data.link) {
             setDebug("Реферальная ссылка получена.");
-            tg.openTelegramLink(data.link);
+
+            // Открываем стандартное окно Telegram "поделиться", чтобы выбрать чат
+            const shareUrl =
+              "https://t.me/share/url?url=" +
+              encodeURIComponent(data.link) +
+              "&text=" +
+              encodeURIComponent("Заходи, это наш общий камень 🔷");
+
+            tg.openTelegramLink(shareUrl);
           } else {
             const msg = "Ошибка получения ссылки: " + JSON.stringify(data);
             setDebug(msg);
@@ -238,9 +246,8 @@
           const data = await resp.json();
           setDebug("Auth OK: " + JSON.stringify(data));
 
-          if (data.ok) {
-            // Включаем кнопку приглашения только после успешной авторизации
-            if (inviteBtn) inviteBtn.disabled = false;
+          if (data.ok && inviteBtn) {
+            inviteBtn.disabled = false;
           }
         } catch (e) {
           const msg = "Fetch error: " + e;
