@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters.command import CommandObject  # ВАЖНО
 
 logging.basicConfig(level=logging.INFO)
 
@@ -18,13 +19,13 @@ print("BOT API_TOKEN prefix:", API_TOKEN[:10])
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    # Аргумент после /start, например "ref_abc123"
-    args = message.get_args()  # aiogram 3.x
-    start_param = args.strip() if args else ""
 
-    # Строим URL мини-аппа. Важно: параметр tgWebAppStartParam.
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message, command: CommandObject):
+    # Аргумент после /start, например "ref_abc123"
+    start_param = (command.args or "").strip() if command else ""
+
+    # Строим URL мини-аппа. Важно: tgWebAppStartParam.
     if start_param:
         webapp_url = f"{WEBAPP_URL}?tgWebAppStartParam={start_param}"
     else:
@@ -50,8 +51,10 @@ async def cmd_start(message: types.Message):
 
     await message.answer(text, reply_markup=keyboard)
 
+
 async def main():
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
