@@ -143,59 +143,71 @@ def process_referral(new_user_id: str, start_param: str | None):
     Создаём пару камней между пригласившим (owner) и приглашённым (new_user),
     если пришёл валидный start_param вида "ref_<owner_user_id>".
     """
-    if not start_param:
-        return
-
-    if not isinstance(start_param, str):
-        return
-
-    if not start_param.startswith("ref_"):
-        return
-
-    owner_user_id = start_param[4:]
-    if owner_user_id == new_user_id:
-        return
-    if owner_user_id not in users or new_user_id not in users:
-        return
-
-    owner = users[owner_user_id]
-    invited = users[new_user_id]
-
-    # Уже есть связь?
-    for p in owner.get("people", {}).values():
-        if p.get("linked_user_id") == new_user_id:
+    try:
+        if not start_param:
+            print(f"REFERRAL: skip, empty start_param for {new_user_id}")
             return
 
-    owner_person_id = generate_id()
-    invited_person_id = generate_id()
+        if not isinstance(start_param, str):
+            print(f"REFERRAL: skip, non-str start_param={start_param!r}")
+            return
 
-    owner["people"][owner_person_id] = {
-        "name": invited.get("name", "Друг"),
-        "level": 1,
-        "xp": 0,
-        "last_action_date": None,
-        "actions_today": 0,
-        "dev_mode": False,
-        "streak_days": 0,
-        "last_streak_date": None,
-        "linked_user_id": new_user_id,
-    }
+        if not start_param.startswith("ref_"):
+            print(f"REFERRAL: skip, wrong prefix start_param={start_param}")
+            return
 
-    invited["people"][invited_person_id] = {
-        "name": owner.get("name", "Друг"),
-        "level": 1,
-        "xp": 0,
-        "last_action_date": None,
-        "actions_today": 0,
-        "dev_mode": False,
-        "streak_days": 0,
-        "last_streak_date": None,
-        "linked_user_id": owner_user_id,
-    }
+        owner_user_id = start_param[4:]
+        if owner_user_id == new_user_id:
+            print(f"REFERRAL: skip, owner == new_user {owner_user_id}")
+            return
 
-    save_data()
-    print(f"REFERRAL: created link {owner_user_id} <-> {new_user_id} with start_param={start_param}")
+        if owner_user_id not in users:
+            print(f"REFERRAL: skip, owner {owner_user_id} not in users")
+            return
+        if new_user_id not in users:
+            print(f"REFERRAL: skip, new_user {new_user_id} not in users")
+            return
 
+        owner = users[owner_user_id]
+        invited = users[new_user_id]
+
+        # Уже есть связь?
+        for pid, p in owner.get("people", {}).items():
+            if p.get("linked_user_id") == new_user_id:
+                print(f"REFERRAL: link already exists owner={owner_user_id}, new={new_user_id}, pid={pid}")
+                return
+
+        owner_person_id = generate_id()
+        invited_person_id = generate_id()
+
+        owner["people"][owner_person_id] = {
+            "name": invited.get("name", "Друг"),
+            "level": 1,
+            "xp": 0,
+            "last_action_date": None,
+            "actions_today": 0,
+            "dev_mode": False,
+            "streak_days": 0,
+            "last_streak_date": None,
+            "linked_user_id": new_user_id,
+        }
+
+        invited["people"][invited_person_id] = {
+            "name": owner.get("name", "Друг"),
+            "level": 1,
+            "xp": 0,
+            "last_action_date": None,
+            "actions_today": 0,
+            "dev_mode": False,
+            "streak_days": 0,
+            "last_streak_date": None,
+            "linked_user_id": owner_user_id,
+        }
+
+        save_data()
+        print(f"REFERRAL: created link owner={owner_user_id} <-> new={new_user_id}")
+    except Exception as e:
+        print(f"REFERRAL: unexpected error for new_user={new_user_id}, start_param={start_param}: {e}")
 @app.route("/auth_telegram", methods=["POST"])
 def auth_telegram():
     print("AUTH_TG: вызывается")
