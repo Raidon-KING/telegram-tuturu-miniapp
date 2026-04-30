@@ -179,16 +179,17 @@ def process_referral(new_user_id: str, start_param: str | None):
 
         owner_person_id = generate_id()
         invited_person_id = generate_id()
+        today = today_str()
 
         owner["people"][owner_person_id] = {
             "name": invited.get("name", "Друг"),
             "level": 1,
             "xp": 0,
-            "last_action_date": None,
+            "last_action_date": today,
             "actions_today": 0,
             "dev_mode": False,
-            "streak_days": 0,
-            "last_streak_date": None,
+            "streak_days": 1,
+            "last_streak_date": today,
             "linked_user_id": new_user_id,
         }
 
@@ -196,11 +197,11 @@ def process_referral(new_user_id: str, start_param: str | None):
             "name": owner.get("name", "Друг"),
             "level": 1,
             "xp": 0,
-            "last_action_date": None,
+            "last_action_date": today,
             "actions_today": 0,
             "dev_mode": False,
-            "streak_days": 0,
-            "last_streak_date": None,
+            "streak_days": 1,
+            "last_streak_date": today,
             "linked_user_id": owner_user_id,
         }
 
@@ -208,6 +209,7 @@ def process_referral(new_user_id: str, start_param: str | None):
         print(f"REFERRAL: created link owner={owner_user_id} <-> new={new_user_id}")
     except Exception as e:
         print(f"REFERRAL: unexpected error for new_user={new_user_id}, start_param={start_param}: {e}")
+
 @app.route("/auth_telegram", methods=["POST"])
 def auth_telegram():
     print("AUTH_TG: вызывается")
